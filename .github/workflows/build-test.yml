@@ -33,6 +33,11 @@ on:
         required: false
         default: true
         type: boolean
+      run_smoke:
+        description: "Run the standalone smoke test (disable for services that need external deps to boot)"
+        required: false
+        default: true
+        type: boolean
       publish_edge:
         description: "On push to default branch, publish :edge to GHCR"
         required: false
@@ -62,22 +67,36 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Smoke test
+        if: ${{ inputs.run_smoke }}
         env:
           IMAGE: localbuild:ci
           PORT: ${{ inputs.smoke_port }}
           HEALTH_PATH: ${{ inputs.smoke_path }}
         run: bash test/smoke.sh
 
+      # Readiness is polled from the host against the published port, so this
+      # does NOT depend on curl/wget existing inside the image.
       - name: Integration test (compose)
         if: ${{ inputs.compose_test }}
+        env:
+          PORT: ${{ inputs.smoke_port }}
+          HEALTH_PATH: ${{ inputs.smoke_path }}
         run: |
-          if [ -f test/compose.test.yml ]; then
-            IMAGE=localbuild:ci docker compose -f test/compose.test.yml up -d --wait --wait-timeout 180
-            IMAGE=localbuild:ci docker compose -f test/compose.test.yml ps
-            IMAGE=localbuild:ci docker compose -f test/compose.test.yml down -v
-          else
-            echo "No test/compose.test.yml — skipping integration test"
+          if [ ! -f test/compose.test.yml ]; then
+            echo "No test/compose.test.yml — skipping integration test"; exit 0
           fi
+          IMAGE=localbuild:ci docker compose -f test/compose.test.yml up -d
+          ok=0
+          for i in $(seq 1 80); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT}${HEALTH_PATH}" || echo 000)
+            if [ "$code" -ge 200 ] && [ "$code" -lt 400 ]; then
+              echo "integration ok (HTTP $code after $((i*3))s)"; ok=1; break
+            fi
+            sleep 3
+          done
+          IMAGE=localbuild:ci docker compose -f test/compose.test.yml logs --tail 60 || true
+          IMAGE=localbuild:ci docker compose -f test/compose.test.yml down -v || true
+          [ "$ok" = 1 ] || { echo "integration: no healthy response within timeout (last: ${code})"; exit 1; }
 
       - name: Log in to GHCR
         if: ${{ inputs.publish_edge && github.event_name == 'push' }}
