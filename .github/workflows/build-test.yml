@@ -43,6 +43,11 @@ on:
         required: false
         default: false
         type: boolean
+      build_args:
+        description: "Newline-separated build args, e.g. COMMIT_TAG=<sha>. Seerr needs COMMIT_TAG or its UI loops on an update prompt."
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -63,6 +68,7 @@ jobs:
           file: ${{ inputs.dockerfile }}
           load: true
           tags: localbuild:ci
+          build-args: ${{ inputs.build_args }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -114,4 +120,5 @@ jobs:
           file: ${{ inputs.dockerfile }}
           push: true
           tags: ${{ inputs.image_name }}:edge
+          build-args: ${{ inputs.build_args }}
           cache-from: type=gha
