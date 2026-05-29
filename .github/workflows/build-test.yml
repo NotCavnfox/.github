@@ -1,0 +1,98 @@
+# Reusable build + test workflow. Lives in NotCavnfox/.github.
+# Each fork calls it via `uses: NotCavnfox/.github/.github/workflows/build-test.yml@main`.
+name: build-test (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      image_name:
+        description: "GHCR image name, e.g. ghcr.io/notcavnfox/seerr"
+        required: true
+        type: string
+      context:
+        description: "Docker build context"
+        required: false
+        default: "."
+        type: string
+      dockerfile:
+        description: "Path to Dockerfile"
+        required: false
+        default: "Dockerfile"
+        type: string
+      smoke_port:
+        description: "Container port the smoke test curls"
+        required: true
+        type: number
+      smoke_path:
+        description: "HTTP path expected to return <400"
+        required: false
+        default: "/"
+        type: string
+      compose_test:
+        description: "Run test/compose.test.yml integration stand-up"
+        required: false
+        default: true
+        type: boolean
+      publish_edge:
+        description: "On push to default branch, publish :edge to GHCR"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image (load locally)
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          load: true
+          tags: localbuild:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test
+        env:
+          IMAGE: localbuild:ci
+          PORT: ${{ inputs.smoke_port }}
+          HEALTH_PATH: ${{ inputs.smoke_path }}
+        run: bash test/smoke.sh
+
+      - name: Integration test (compose)
+        if: ${{ inputs.compose_test }}
+        run: |
+          if [ -f test/compose.test.yml ]; then
+            IMAGE=localbuild:ci docker compose -f test/compose.test.yml up -d --wait --wait-timeout 180
+            IMAGE=localbuild:ci docker compose -f test/compose.test.yml ps
+            IMAGE=localbuild:ci docker compose -f test/compose.test.yml down -v
+          else
+            echo "No test/compose.test.yml — skipping integration test"
+          fi
+
+      - name: Log in to GHCR
+        if: ${{ inputs.publish_edge && github.event_name == 'push' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish :edge
+        if: ${{ inputs.publish_edge && github.event_name == 'push' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          push: true
+          tags: ${{ inputs.image_name }}:edge
+          cache-from: type=gha
