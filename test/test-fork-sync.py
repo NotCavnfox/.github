@@ -183,6 +183,9 @@ os.execv(os.environ['REAL_GIT'], [os.environ['REAL_GIT']] + sys.argv[1:])
         self.assertEqual(self.git(self.origin, 'rev-parse', 'refs/heads/' + branch), head)
         calls = self.gh_calls()
         self.assertEqual(sum(c[:2] == ['pr', 'create'] for c in calls), 1)
+        created = next(c for c in calls if c[:2] == ['pr', 'create'])
+        # Seerr's semantic-title check accepts chore, not the custom sync type.
+        self.assertEqual(created[created.index('--title') + 1], 'chore: sync upstream v1.2.3')
         self.assertEqual(sum(c[:2] == ['workflow', 'run'] for c in calls), 1)
         listed = [c for c in calls if c[:2] == ['run', 'list']]
         self.assertTrue(all(c[c.index('--commit') + 1] == head for c in listed))

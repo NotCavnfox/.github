@@ -160,7 +160,7 @@ jobs:
             }
             BODY=$(printf 'Stable upstream `%s` at `%s`, merged into fork `%s`.\n\nIndependent review and passing CI are required. No automatic merge is requested. Check publication and server-update triggers before merging; server-affecting releases need explicit approval.\n' "$REF" "$UPSTREAM_SHA" "$BASE_SHA")
             gh pr create --repo "$REPO" --base "$BASE_BRANCH" --head "$BRANCH" \
-              --title "sync: upstream $REF" --body "$BODY" --label upstream-sync
+              --title "chore: sync upstream $REF" --body "$BODY" --label upstream-sync
           fi
           # Token-created PRs do not trigger pull_request CI. Dispatch on the
           # published branch; the coordinator must verify the exact PR SHA.
