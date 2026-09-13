@@ -1,0 +1,32 @@
+name: Test shared fork sync
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  offline-regressions:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - upstream_repo: seerr-team/seerr
+            base_branch: develop
+          - upstream_repo: wizarrrr/wizarr
+            base_branch: main
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install PyYAML==6.0.2
+      - run: python test/test-fork-sync.py
+        env:
+          SYNC_TEST_UPSTREAM_REPO: ${{ matrix.upstream_repo }}
+          SYNC_TEST_BASE_BRANCH: ${{ matrix.base_branch }}
